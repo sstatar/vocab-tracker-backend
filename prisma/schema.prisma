@@ -1,0 +1,44 @@
+// 1. ส่วนตั้งค่าการทำงานของ Prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+// 2. ส่วนเชื่อมต่อฐานข้อมูล
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// -------------------------------------------------
+// 3. ออกแบบตาราง (Models)
+// -------------------------------------------------
+
+// ตารางที่ 1: เก็บข้อมูลผู้ใช้งาน
+model User {
+  id        String       @id @default(uuid())
+  email     String       @unique
+  name      String?
+  password  String       // เพิ่มช่องนี้เข้ามาเพื่อเก็บรหัสผ่านที่เข้ารหัสแล้ว
+  vocabularies Vocabulary[]
+  createdAt DateTime     @default(now())
+}
+
+// ตารางที่ 2: เก็บข้อมูลคำศัพท์ TOEIC
+model Vocabulary {
+  id           String   @id @default(uuid())
+  word         String
+  meaning      String
+  partOfSpeech String
+  example      String?  
+  status       Status   @default(TO_LEARN)
+  userId       String
+  user         User     @relation(fields: [userId], references: [id])
+  createdAt    DateTime @default(now())
+}
+
+// 4. ตัวเลือกสถานะ
+enum Status {
+  TO_LEARN
+  LEARNING
+  MASTERED
+}
