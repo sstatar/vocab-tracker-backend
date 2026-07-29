@@ -12,7 +12,7 @@ app.use(express.json());
 
 // Health check endpoint
 app.get('/', (req: Request, res: Response) => {
-  res.status(200).json({ message: 'TOEIC Tracker API is running successfully.' });
+  res.status(200).json({ message: 'Vocab Tracker API is running...' });
 });
 
 // Routes
