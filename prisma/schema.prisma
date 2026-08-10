@@ -30,7 +30,7 @@ model Vocabulary {
   meaning      String
   partOfSpeech String
   example      String?  
-  status       Status   @default(TO_LEARN)
+  status       Status   @default(LEARNING)
   userId       String
   user         User     @relation(fields: [userId], references: [id])
   createdAt    DateTime @default(now())
@@ -38,7 +38,7 @@ model Vocabulary {
 
 // 4. ตัวเลือกสถานะ
 enum Status {
-  TO_LEARN
   LEARNING
+  NEEDS_REVIEW
   MASTERED
 }
