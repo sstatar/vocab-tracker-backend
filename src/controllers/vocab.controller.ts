@@ -93,7 +93,7 @@ export const deleteVocab = async (req: AuthRequest, res: Response): Promise<void
 
     // Security check: Verify ownership before deleting
     const existingVocab = await prisma.vocabulary.findFirst({
-      where: { id, userId}
+      where: { id, userId }
     });
 
     if (!existingVocab) {
@@ -114,42 +114,24 @@ export const deleteVocab = async (req: AuthRequest, res: Response): Promise<void
 
 export const getVocabStats = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    // req.userId จะมาจาก verifyToken Middleware ที่เราทำไว้ครับ
-    // เราต้องนับเฉพาะคำศัพท์ของ User คนที่ล็อกอินอยู่เท่านั้น!
-    const userId = req.userId; 
+    const userId = req.userId;
 
     if (!userId) {
       res.status(401).json({ message: 'Unauthorized' });
       return;
     }
+    const [totalVocabs, masteredVocabs, learningVocabs, needsReviewVocabs] = await Promise.all([
+      prisma.vocabulary.count({ where: { userId: userId } }),
+      prisma.vocabulary.count({ where: { userId: userId, status: 'MASTERED' } }),
+      prisma.vocabulary.count({ where: { userId: userId, status: 'LEARNING' } }),
+      prisma.vocabulary.count({ where: { userId: userId, status: 'NEEDS_REVIEW' } }) // 🌟 เพิ่มสถานะนี้
+    ]);
 
-    // 1. นับคำศัพท์ทั้งหมดของ User นี้
-    const totalVocabs = await prisma.vocabulary.count({
-      where: { userId: userId }
-    });
-
-    // 2. นับเฉพาะคำที่สถานะเป็น MASTERED
-    const masteredVocabs = await prisma.vocabulary.count({
-      where: { 
-        userId: userId,
-        status: 'MASTERED' // อย่าลืมแก้ให้ตรงกับ Enum ปัจจุบันของคุณนะครับ
-      }
-    });
-
-    // 3. นับเฉพาะคำที่สถานะเป็น LEARNING (กำลังเรียน)
-    const learningVocabs = await prisma.vocabulary.count({
-      where: { 
-        userId: userId,
-        status: 'LEARNING'
-      }
-    });
-
-    // ส่งกลับไปให้ Frontend เป็น Object สวยๆ
     res.status(200).json({
       total: totalVocabs,
       mastered: masteredVocabs,
       learning: learningVocabs,
-      // คำนวณ % ความสำเร็จไว้ให้ Frontend ใช้เลยก็ดูหล่อนะครับ
+      needsReview: needsReviewVocabs,
       progressPercentage: totalVocabs === 0 ? 0 : Math.round((masteredVocabs / totalVocabs) * 100)
     });
 
