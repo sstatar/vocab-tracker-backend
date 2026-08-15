@@ -51,35 +51,105 @@ export const getVocabs = async (req: AuthRequest, res: Response): Promise<void> 
  */
 export const updateVocab = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const id = req.params.id as string;
-    const { word, meaning, partOfSpeech, example, status } = req.body;
     const userId = req.userId as string;
+    const id = req.params.id as string;
+    const { status, word, meaning, partOfSpeech, example } = req.body;
 
-    // Security check: Find the vocab first to ensure it belongs to the requesting user
-    const existingVocab = await prisma.vocabulary.findFirst({
-      where: { id, userId }
-    });
-
-    if (!existingVocab) {
-      res.status(404).json({ error: 'Vocabulary not found or unauthorized' });
+    if (!userId) {
+      res.status(401).json({ message: "Unauthorized" });
       return;
     }
 
+    // 1. เช็กความปลอดภัยก่อนว่ามีสิทธิ์แก้ไหม
+    const existingVocab = await prisma.vocabulary.findFirst({
+      where: { id: id, userId: userId }
+    });
+
+    if (!existingVocab) {
+      res.status(404).json({ message: "Vocabulary not found or unauthorized" });
+      return;
+    }
+
+    // 2. ถ้ามีสิทธิ์ ค่อยสั่ง Update
     const updatedVocab = await prisma.vocabulary.update({
-      where: { id },
-      data: {
-        word,
-        meaning,
-        partOfSpeech,
-        example,
-        status,
-      },
+      where: { id: id },
+      data: { status, word, meaning, partOfSpeech, example },
     });
 
     res.status(200).json(updatedVocab);
   } catch (error) {
-    console.error('Update Vocab Error:', error);
-    res.status(500).json({ error: 'Internal server error while updating vocabulary' });
+    console.error("Error updating vocab:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+/**
+ * Review a vocabulary and update Daily Goal & Streak
+ */
+export const reviewVocab = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.userId as string;
+    const id = req.params.id as string;
+    const { status } = req.body;
+
+    if (!userId) {
+      res.status(401).json({ message: "Unauthorized" });
+      return;
+    }
+
+    const existingVocab = await prisma.vocabulary.findFirst({
+      where: { id: id, userId: userId }
+    });
+
+    if (!existingVocab) {
+      res.status(404).json({ message: "Vocabulary not found or unauthorized" });
+      return;
+    }
+
+    const updatedVocab = await prisma.vocabulary.update({
+      where: { id: id },
+      data: { status: status },
+    });
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+
+    if (user) {
+      await prisma.dailyProgress.upsert({
+        where: { userId_date: { userId: userId, date: today } },
+        update: { reviewedCount: { increment: 1 } },
+        create: { userId: userId, date: today, reviewedCount: 1 }
+      });
+
+      let newStreak = user.currentStreak;
+      const lastActive = user.lastActiveDate ? new Date(user.lastActiveDate) : null;
+      if (lastActive) lastActive.setHours(0, 0, 0, 0);
+
+      if (!lastActive || lastActive.getTime() !== today.getTime()) {
+        if (lastActive && lastActive.getTime() === yesterday.getTime()) {
+          newStreak += 1;
+        } else {
+          newStreak = 1;
+        }
+
+        await prisma.user.update({
+          where: { id: userId },
+          data: {
+            currentStreak: newStreak,
+            lastActiveDate: today
+          }
+        });
+      }
+    }
+
+    res.status(200).json({ message: "Review recorded", vocab: updatedVocab });
+  } catch (error) {
+    console.error("Error in reviewVocab:", error);
+    res.status(500).json({ message: "Internal server error" });
   }
 };
 
