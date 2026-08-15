@@ -184,25 +184,47 @@ export const deleteVocab = async (req: AuthRequest, res: Response): Promise<void
 
 export const getVocabStats = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const userId = req.userId;
+    const userId = req.userId as string;
 
     if (!userId) {
       res.status(401).json({ message: 'Unauthorized' });
       return;
     }
+
+    // 1. ดึงสถิติคำศัพท์เหมือนเดิม
     const [totalVocabs, masteredVocabs, learningVocabs, needsReviewVocabs] = await Promise.all([
       prisma.vocabulary.count({ where: { userId: userId } }),
       prisma.vocabulary.count({ where: { userId: userId, status: 'MASTERED' } }),
       prisma.vocabulary.count({ where: { userId: userId, status: 'LEARNING' } }),
-      prisma.vocabulary.count({ where: { userId: userId, status: 'NEEDS_REVIEW' } }) // 🌟 เพิ่มสถานะนี้
+      prisma.vocabulary.count({ where: { userId: userId, status: 'NEEDS_REVIEW' } })
     ]);
 
+    // 🌟 2. (ส่วนที่แก้เพิ่ม) หาวันที่ของวันนี้ เพื่อดึงเป้าหมายรายวัน
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        dailyProgresses: {
+          where: { date: today } // ดึงเฉพาะประวัติของวันนี้
+        }
+      }
+    });
+
+    // 3. ส่งข้อมูลกลับไปให้หน้าเว็บ (เพิ่มตัวแปรใหม่เข้าไป)
     res.status(200).json({
       total: totalVocabs,
       mastered: masteredVocabs,
       learning: learningVocabs,
       needsReview: needsReviewVocabs,
-      progressPercentage: totalVocabs === 0 ? 0 : Math.round((masteredVocabs / totalVocabs) * 100)
+      progressPercentage: totalVocabs === 0 ? 0 : Math.round((masteredVocabs / totalVocabs) * 100),
+
+      // 🌟 ข้อมูลที่ Dashboard ต้องการเอาไปโชว์
+      userName: user?.name || "User",
+      streak: user?.currentStreak || 0,
+      dailyGoal: user?.dailyGoal || 20,
+      reviewedToday: user?.dailyProgresses[0]?.reviewedCount || 0
     });
 
   } catch (error) {
