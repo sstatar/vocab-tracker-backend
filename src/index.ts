@@ -2,6 +2,7 @@ import express, { Request, Response } from 'express';
 import cors from 'cors';
 import vocabRoutes from './routes/vocab.routes';
 import authRoutes from './routes/auth.routes';
+import userRoutes from './routes/user.routes';
 
 const app = express();
 const port = process.env.PORT || 8000;
@@ -18,6 +19,7 @@ app.get('/', (req: Request, res: Response) => {
 // Routes
 app.use('/api/vocab', vocabRoutes);
 app.use('/api/auth', authRoutes);
+app.use('/api/users', userRoutes);
 
 app.listen(port, () => {
   console.log(`[Server]: API is running at http://localhost:${port}`);
