@@ -133,3 +133,29 @@ export const changePassword = async (req: AuthRequest, res: Response): Promise<v
         res.status(500).json({ message: "Internal server error" });
     }
 };
+
+export const deleteAccount = async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+        const userId = req.userId;
+
+        if (!userId) {
+            res.status(401).json({ message: "Unauthorized" });
+            return;
+        }
+
+        const user = await prisma.user.findUnique({ where: { id: userId } });
+        if (!user) {
+            res.status(404).json({ message: "User not found" });
+            return;
+        }
+
+        await prisma.user.delete({
+            where: { id: userId },
+        });
+
+        res.status(200).json({ message: "Account deleted successfully" });
+    } catch (error) {
+        console.error("Error deleting account:", error);
+        res.status(500).json({ message: "Internal server error" });
+    }
+};
