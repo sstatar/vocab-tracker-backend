@@ -36,7 +36,7 @@ export const getVocabs = async (req: AuthRequest, res: Response): Promise<void> 
   try {
     const userVocabs = await prisma.vocabulary.findMany({
       where: { userId: req.userId },
-      orderBy: { createdAt: 'desc' }, // Sort by newest first
+      orderBy: { createdAt: 'desc' },
     });
 
     res.status(200).json(userVocabs);
@@ -60,7 +60,6 @@ export const updateVocab = async (req: AuthRequest, res: Response): Promise<void
       return;
     }
 
-    // 1. เช็กความปลอดภัยก่อนว่ามีสิทธิ์แก้ไหม
     const existingVocab = await prisma.vocabulary.findFirst({
       where: { id: id, userId: userId }
     });
@@ -70,10 +69,21 @@ export const updateVocab = async (req: AuthRequest, res: Response): Promise<void
       return;
     }
 
-    // 2. ถ้ามีสิทธิ์ ค่อยสั่ง Update
+    let mistakeCountUpdate = existingVocab.mistakeCount;
+    if (status === 'MASTERED') {
+      mistakeCountUpdate = 0;
+    }
+
     const updatedVocab = await prisma.vocabulary.update({
       where: { id: id },
-      data: { status, word, meaning, partOfSpeech, example },
+      data: {
+        status,
+        mistakeCount: mistakeCountUpdate,
+        word,
+        meaning,
+        partOfSpeech,
+        example
+      },
     });
 
     res.status(200).json(updatedVocab);
@@ -90,7 +100,8 @@ export const reviewVocab = async (req: AuthRequest, res: Response): Promise<void
   try {
     const userId = req.userId as string;
     const id = req.params.id as string;
-    const { status } = req.body;
+
+    const { status, isMistake } = req.body;
 
     if (!userId) {
       res.status(401).json({ message: "Unauthorized" });
@@ -106,9 +117,21 @@ export const reviewVocab = async (req: AuthRequest, res: Response): Promise<void
       return;
     }
 
+    let mistakeCountLogic: any = {};
+    if (status === 'MASTERED') {
+      mistakeCountLogic = 0;
+    } else if (isMistake === true) {
+      mistakeCountLogic = { increment: 1 };
+    } else {
+      mistakeCountLogic = existingVocab.mistakeCount;
+    }
+
     const updatedVocab = await prisma.vocabulary.update({
       where: { id: id },
-      data: { status: status },
+      data: {
+        status: status,
+        mistakeCount: mistakeCountLogic
+      },
     });
 
     const today = new Date();
@@ -191,15 +214,19 @@ export const getVocabStats = async (req: AuthRequest, res: Response): Promise<vo
       return;
     }
 
-    // 1. ดึงสถิติคำศัพท์เหมือนเดิม
     const [totalVocabs, masteredVocabs, learningVocabs, needsReviewVocabs] = await Promise.all([
       prisma.vocabulary.count({ where: { userId: userId } }),
       prisma.vocabulary.count({ where: { userId: userId, status: 'MASTERED' } }),
       prisma.vocabulary.count({ where: { userId: userId, status: 'LEARNING' } }),
-      prisma.vocabulary.count({ where: { userId: userId, status: 'NEEDS_REVIEW' } })
+      prisma.vocabulary.count({
+        where: {
+          userId: userId,
+          status: 'LEARNING',
+          mistakeCount: { gt: 0 }
+        }
+      })
     ]);
 
-    // 🌟 2. (ส่วนที่แก้เพิ่ม) หาวันที่ของวันนี้ เพื่อดึงเป้าหมายรายวัน
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
@@ -207,12 +234,11 @@ export const getVocabStats = async (req: AuthRequest, res: Response): Promise<vo
       where: { id: userId },
       include: {
         dailyProgresses: {
-          where: { date: today } // ดึงเฉพาะประวัติของวันนี้
+          where: { date: today }
         }
       }
     });
 
-    // 3. ส่งข้อมูลกลับไปให้หน้าเว็บ (เพิ่มตัวแปรใหม่เข้าไป)
     res.status(200).json({
       total: totalVocabs,
       mastered: masteredVocabs,
@@ -220,7 +246,6 @@ export const getVocabStats = async (req: AuthRequest, res: Response): Promise<vo
       needsReview: needsReviewVocabs,
       progressPercentage: totalVocabs === 0 ? 0 : Math.round((masteredVocabs / totalVocabs) * 100),
 
-      // 🌟 ข้อมูลที่ Dashboard ต้องการเอาไปโชว์
       userName: user?.name || "User",
       streak: user?.currentStreak || 0,
       dailyGoal: user?.dailyGoal || 20,
